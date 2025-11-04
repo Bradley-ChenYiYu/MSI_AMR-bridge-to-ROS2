@@ -85,14 +85,33 @@ print("✅ client_lib path:", lib_path)
 # lower-level libs (libplayerc) are loaded before libplayerc++ which
 # depends on them. If a load fails, print ldd output to help diagnose
 # missing transitive dependencies.
+# dep_order = [
+#     'libplayerc.so.3.1', 'libplayerc.so',
+#     'libplayercommon.so.3.1', 'libplayercommon.so',
+#     'libplayercore.so.3.1', 'libplayercore.so',
+#     'libplayerinterface.so.3.1', 'libplayerinterface.so',
+#     'libplayerjpeg.so.3.1', 'libplayerjpeg.so',
+#     'libplayerreplace.so.3.1', 'libplayerreplace.so',
+#     'libplayerwkb.so.3.1', 'libplayerwkb.so',
+#     'libplayerc++.so.3.1', 'libplayerc++.so',
+#     'libpython3.6m.so.1.0', 'libpython3.6m.so'
+# ]
 dep_order = [
-    'libplayerc.so.3.1', 'libplayerc.so',
     'libplayercommon.so.3.1', 'libplayercommon.so',
-    'libplayercore.so.3.1', 'libplayercore.so',
+    'libjemalloc.so.2',
     'libplayerinterface.so.3.1', 'libplayerinterface.so',
-    'libplayerjpeg.so.3.1', 'libplayerjpeg.so',
-    'libplayerreplace.so.3.1', 'libplayerreplace.so',
     'libplayerwkb.so.3.1', 'libplayerwkb.so',
+    'liblzma.so.5',
+    'libz.so.1',
+    'libgcc_s.so.1',
+    'libgeos-3.6.2.so', 'libgeos_c.so.1',
+    'libjpeg.so.8',
+    'libplayerjpeg.so.3.1', 'libplayerjpeg.so',
+    'libplayerc.so.3.1', 'libplayerc.so',
+    'libplayercore.so.3.1', 'libplayercore.so',
+    'libplayerreplace.so.3.1', 'libplayerreplace.so',
+    
+    'libboost_system.so.1.65.1', 'libboost_thread.so.1.65.1',
     'libplayerc++.so.3.1', 'libplayerc++.so',
     'libpython3.6m.so.1.0', 'libpython3.6m.so'
 ]
