@@ -16,7 +16,8 @@ import os
 import sys
 from ament_index_python.packages import get_package_share_directory
 import threading
-
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster
 
 
 
@@ -39,7 +40,94 @@ os.environ['LD_LIBRARY_PATH'] = os.environ.get('LD_LIBRARY_PATH', '') + ':' + li
 # 確認目前路徑
 print("✅ client_lib path:", lib_path)
 
-# 匯入 Player binding
+# Preload bundled native libraries that the SWIG extension depends on.
+# Some of the binary .so files (built against an older Python ABI) may
+# reference libpython3.6m.so.1.0. The system has Python 3.10, so the
+# dynamic loader can't find that library. If a copy of libpython3.6m
+# is shipped in `client_lib/`, preload it with RTLD_GLOBAL so the
+# subsequent import of the SWIG _playercpp extension can resolve symbols.
+# try:
+#     # Look for the old libpython in the client_lib folder and preload it.
+#     possible = [
+#         os.path.join(lib_path, 'libpython3.6m.so.1.0'),
+#         os.path.join(lib_path, 'libpython3.6m.so'),
+#     ]
+#     # Also attempt explicit preload of libplayerc++ which _playercpp depends on
+#     possible.extend([
+#         os.path.join(lib_path, 'libplayerc++.so.3.1'),
+#         os.path.join(lib_path, 'libplayerc++.so'),
+#     ])
+#     loaded = []
+#     for p in possible:
+#         if os.path.exists(p):
+#             try:
+#                 # Use RTLD_GLOBAL to make symbols available to subsequently
+#                 # loaded extensions. Use mode value from ctypes if available.
+#                 mode = getattr(ctypes, 'RTLD_GLOBAL', None)
+#                 if mode is not None:
+#                     ctypes.CDLL(p, mode)
+#                 else:
+#                     ctypes.CDLL(p)
+#                 loaded.append(p)
+#             except OSError:
+#                 # ignore load errors and continue
+#                 pass
+#     if loaded:
+#         print('✅ preloaded native libs:', ','.join(loaded))
+# except Exception as _e:
+#     # Don't fail here; fall back to normal import and let import raise a helpful error.
+#     print('⚠️ preloading native libs failed:', str(_e))
+
+# Verbose explicit attempt to preload libplayerc++ variants so we can
+# see whether they are actually present and loadable before importing
+# the SWIG extension.
+# Try to preload player libraries in a dependency-aware order so that
+# lower-level libs (libplayerc) are loaded before libplayerc++ which
+# depends on them. If a load fails, print ldd output to help diagnose
+# missing transitive dependencies.
+dep_order = [
+    'libplayerc.so.3.1', 'libplayerc.so',
+    'libplayercommon.so.3.1', 'libplayercommon.so',
+    'libplayercore.so.3.1', 'libplayercore.so',
+    'libplayerinterface.so.3.1', 'libplayerinterface.so',
+    'libplayerjpeg.so.3.1', 'libplayerjpeg.so',
+    'libplayerreplace.so.3.1', 'libplayerreplace.so',
+    'libplayerwkb.so.3.1', 'libplayerwkb.so',
+    'libplayerc++.so.3.1', 'libplayerc++.so',
+    'libpython3.6m.so.1.0', 'libpython3.6m.so'
+]
+loaded_deps = []
+failed_deps = []
+import subprocess
+
+for name in dep_order:
+    p = os.path.join(lib_path, name)
+    if not os.path.exists(p):
+        continue
+    try:
+        mode = getattr(ctypes, 'RTLD_GLOBAL', None)
+        if mode is not None:
+            ctypes.CDLL(p, mode)
+        else:
+            ctypes.CDLL(p)
+        loaded_deps.append(p)
+        print('✅ preloaded:', name)
+    except OSError as e:
+        failed_deps.append((p, str(e)))
+        print('⚠️ failed to preload', p, ':', e)
+        # Try to run ldd on the file to show missing transitive dependencies
+        try:
+            out = subprocess.check_output(['ldd', p], stderr=subprocess.STDOUT, text=True)
+            print('ldd output for', name, '->\n', out)
+        except Exception as le:
+            print('Could not run ldd for', p, ':', le)
+
+if loaded_deps:
+    print('✅ preloaded native libs (ordered):', ','.join(loaded_deps))
+if failed_deps:
+    print('⚠️ some native libs failed to preload; see messages above')
+
+# Import Player binding
 from playercpp import *
 from playerc import *
 
@@ -66,7 +154,7 @@ class PlayerBridgeNode(Node):
         super().__init__('player_bridge_node')
 
         # --- ROS 參數 ---
-        self.declare_parameter('player_host', '192.168.0.1')
+        self.declare_parameter('player_host', '192.168.0.2')
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('map_frame', 'map')
@@ -113,9 +201,7 @@ class PlayerBridgeNode(Node):
         self.laser0_pub = self.create_publisher(LaserScan, 'laser0', 10)
         self.laser1_pub = self.create_publisher(LaserScan, 'laser1', 10)
         self.cmd_sub = self.create_subscription(Twist, 'cmd_vel', self.cmd_callback, 10)
-
-
-
+        self.tf_broadcaster = TransformBroadcaster(self)
 
         # --- 速度命令 ---
         self.cmd_v = 0.0
@@ -189,13 +275,30 @@ class PlayerBridgeNode(Node):
             odom_msg.pose.pose.orientation.y = quat[1]
             odom_msg.pose.pose.orientation.z = quat[2]
             odom_msg.pose.pose.orientation.w = quat[3]
-
+            timestamp = self.get_clock().now().to_msg()
+            self._tf2_publish(x, y, quat, timestamp)
             odom_msg.twist.twist.linear.x = p2d.GetXSpeed()
             odom_msg.twist.twist.linear.y = p2d.GetYSpeed()
             odom_msg.twist.twist.angular.z = p2d.GetYawSpeed()
             
             pub.publish(odom_msg)
-        
+
+    def _tf2_publish(self, x, y, quat, timestamp):
+        t = TransformStamped()
+        t.header.stamp = timestamp
+        t.header.frame_id = self.get_parameter('odom_frame').get_parameter_value().string_value
+        t.child_frame_id = self.get_parameter('base_frame').get_parameter_value().string_value
+
+        t.transform.translation.x = x
+        t.transform.translation.y = y
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = quat[0]
+        t.transform.rotation.y = quat[1]
+        t.transform.rotation.z = quat[2]
+        t.transform.rotation.w = quat[3]
+
+        self.tf_broadcaster.sendTransform(t)
+    
     # -------------------------------------------------------------------------
     def publish_slam(self, p2d: Position2dProxy, pub: rclpy.publisher.Publisher):
         if p2d.IsFresh()==True:
