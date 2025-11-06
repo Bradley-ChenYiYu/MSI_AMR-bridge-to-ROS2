@@ -18,6 +18,7 @@ from ament_index_python.packages import get_package_share_directory
 import threading
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
+from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
 
 
@@ -65,7 +66,7 @@ class PlayerBridgeNode(Node):
         self.lp0 = LaserProxy(self.robot, 0);
         self.lp1 = LaserProxy(self.robot, 1);
 
-
+        self.tf_static_broadcaster = StaticTransformBroadcaster(self)
         # Retrieve the pose of the laser with respect to its parent
         self.lp0.RequestConfigure();
         self.lp0.RequestGeom();
@@ -76,6 +77,7 @@ class PlayerBridgeNode(Node):
         maxAngle = self.lp0.GetMaxAngle();
         self.get_logger().info('Laser[%d] maxRange:%3.3f<m> angleRes:%.3f<rad>  minAngle:%2.3f<rad> maxAngle:%2.3f<rad> pose:(px=%.3f,py=%.3f,pz=%.3f,proll=%.3f,ppitch=%.3f,pyaw=%.3f)' %  \
             (0, maxRange, angleRes, minAngle, maxAngle, pose.px, pose.py, pose.pz, pose.proll, pose.ppitch, pose.pyaw))
+        self._publish_static_tf2(pose.px, pose.py, pose.pz, pose.proll, pose.ppitch, pose.pyaw, child_frame_id='laser0', frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
 
         self.lp1.RequestConfigure();
         self.lp1.RequestGeom();
@@ -86,6 +88,8 @@ class PlayerBridgeNode(Node):
         maxAngle = self.lp1.GetMaxAngle();
         self.get_logger().info('Laser[%d] maxRange:%3.3f<m> angleRes:%.3f<rad>  minAngle:%2.3f<rad> maxAngle:%2.3f<rad> pose:(px=%.3f,py=%.3f,pz=%.3f,proll=%.3f,ppitch=%.3f,pyaw=%.3f)' %  \
             (1, maxRange, angleRes, minAngle, maxAngle, pose.px, pose.py, pose.pz, pose.proll, pose.ppitch, pose.pyaw))
+        self._publish_static_tf2(pose.px, pose.py, pose.pz, pose.proll, pose.ppitch, pose.pyaw, child_frame_id='laser1', frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
+
 
 
 
@@ -98,6 +102,12 @@ class PlayerBridgeNode(Node):
         self.cmd_sub = self.create_subscription(Twist, 'cmd_vel', self.cmd_callback, 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
+        # --- Save odom data for tf publishing ---
+        self.x = 0.0
+        self.y = 0.0
+        self.yaw = 0.0
+        self.odom_timestamp = None
+
         # --- 速度命令 ---
         self.cmd_v = 0.0
         self.cmd_w = 0.0
@@ -109,6 +119,10 @@ class PlayerBridgeNode(Node):
         self.loop_thread = threading.Thread(target=self.loop_thread_func)
         self.loop_thread.daemon = True
         self.loop_thread.start()
+        # --- Thread for publishing tf2 ---
+        self.tf2_thread = threading.Thread(target=self.publish_tf2_func)
+        self.tf2_thread.daemon = True
+        self.tf2_thread.start()
 
         self.get_logger().info("Player ROS2 bridge started.")
 
@@ -124,6 +138,7 @@ class PlayerBridgeNode(Node):
 
     # -------------------------------------------------------------------------
     def publish_laser(self, lp: LaserProxy, pub: rclpy.publisher.Publisher):
+        # self.get_logger().info(f"Laser data {lp.IsFresh()}")
         if lp.IsFresh()==True:
             lp.NotFresh()
             
@@ -141,10 +156,47 @@ class PlayerBridgeNode(Node):
             scan.scan_time = 1.0 / lp.GetScanningFrequency()
             scan.range_min = 0.0
             scan.range_max = lp.GetMaxRange()
-            scan.ranges = r.tolist()
-            scan.intensities = i.tolist()
+            # scan.ranges = r.tolist()
+            # scan.intensities = i.tolist()
+            
+            # Sanitize ranges: ensure finite floats and within [range_min, range_max]
+            ranges = []
+            for val in r:
+                try:
+                    f = float(val)
+                except Exception:
+                    f = float('nan')
+                if math.isnan(f) or math.isinf(f):
+                    # replace invalid range with max range (interpreted as no return)
+                    f = float(scan.range_max)
+                # clamp to [range_min, range_max]
+                if f < scan.range_min:
+                    f = float(scan.range_min)
+                if f > scan.range_max:
+                    f = float(scan.range_max)
+                ranges.append(f)
+
+            # Sanitize intensities: ensure floats; if missing or invalid use 0.0
+            intensities = []
+            # If intensity vector is shorter or longer than ranges, align by index
+            for idx in range(len(ranges)):
+                if idx < len(i):
+                    try:
+                        iv = float(i[idx])
+                        if math.isnan(iv) or math.isinf(iv):
+                            iv = 0.0
+                    except Exception:
+                        iv = 0.0
+                else:
+                    iv = 0.0
+                intensities.append(iv)
+
+            scan.ranges = ranges
+            scan.intensities = intensities
+            
             
             pub.publish(scan)
+            # self.get_logger().info("Sending Laser scan")
     # -------------------------------------------------------------------------
     def publish_odom(self, p2d: Position2dProxy, pub: rclpy.publisher.Publisher):
         if p2d.IsFresh()==True:
@@ -156,36 +208,38 @@ class PlayerBridgeNode(Node):
             odom_msg.header.frame_id = self.get_parameter('odom_frame').get_parameter_value().string_value
             odom_msg.child_frame_id = self.get_parameter('base_frame').get_parameter_value().string_value
 
-            x = p2d.GetXPos()
-            y = p2d.GetYPos()
-            yaw = p2d.GetYaw()
+            self.x = p2d.GetXPos()
+            self.y = p2d.GetYPos()
+            self.yaw = p2d.GetYaw()
+            self.odom_timestamp = self.get_clock().now().to_msg()
 
             #self.get_logger().info('x=%4.3f y=%4.3f  yaw=%4.3f' % (x,y,yaw))
                 
-            quat = euler_to_quaternion(0, 0, yaw)
-            odom_msg.pose.pose.position.x = x
-            odom_msg.pose.pose.position.y = y
+            quat = euler_to_quaternion(0, 0, self.yaw)
+            odom_msg.pose.pose.position.x = self.x
+            odom_msg.pose.pose.position.y = self.y
             odom_msg.pose.pose.position.z = 0.0
             odom_msg.pose.pose.orientation.x = quat[0]
             odom_msg.pose.pose.orientation.y = quat[1]
             odom_msg.pose.pose.orientation.z = quat[2]
-            odom_msg.pose.pose.orientation.w = quat[3]
-            timestamp = self.get_clock().now().to_msg()
-            self._tf2_publish(x, y, quat, timestamp)
+            odom_msg.pose.pose.orientation.w = quat[3]            
             odom_msg.twist.twist.linear.x = p2d.GetXSpeed()
             odom_msg.twist.twist.linear.y = p2d.GetYSpeed()
             odom_msg.twist.twist.angular.z = p2d.GetYawSpeed()
             
             pub.publish(odom_msg)
 
-    def _tf2_publish(self, x, y, quat, timestamp):
+    def publish_tf2(self):
+        if self.odom_timestamp is None:
+            return
         t = TransformStamped()
-        t.header.stamp = timestamp
+        t.header.stamp = self.odom_timestamp
         t.header.frame_id = self.get_parameter('odom_frame').get_parameter_value().string_value
         t.child_frame_id = self.get_parameter('base_frame').get_parameter_value().string_value
 
-        t.transform.translation.x = x
-        t.transform.translation.y = y
+        quat = euler_to_quaternion(0, 0, self.yaw)
+        t.transform.translation.x = self.x
+        t.transform.translation.y = self.y
         t.transform.translation.z = 0.0
         t.transform.rotation.x = quat[0]
         t.transform.rotation.y = quat[1]
@@ -193,6 +247,25 @@ class PlayerBridgeNode(Node):
         t.transform.rotation.w = quat[3]
 
         self.tf_broadcaster.sendTransform(t)
+
+    def _publish_static_tf2(self, x, y, z, roll, pitch, yaw, frame_id, child_frame_id):
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = frame_id
+        t.child_frame_id = child_frame_id
+
+        quat = euler_to_quaternion(roll, pitch, yaw)
+
+        t.transform.translation.x = float(x)
+        t.transform.translation.y = float(y)
+        t.transform.translation.z = float(z)
+        t.transform.rotation.x = quat[0]
+        t.transform.rotation.y = quat[1]
+        t.transform.rotation.z = quat[2]
+        t.transform.rotation.w = quat[3]
+
+        self.tf_static_broadcaster.sendTransform(t)
+        self.get_logger().info(f'Published static transform from {t.header.frame_id} to {t.child_frame_id}')
     
     # -------------------------------------------------------------------------
     def publish_slam(self, p2d: Position2dProxy, pub: rclpy.publisher.Publisher):
@@ -232,6 +305,14 @@ class PlayerBridgeNode(Node):
                 self.loop()
             except Exception as e:
                 self.get_logger().error(f"Player loop error: {e}")
+
+    def publish_tf2_func(self):
+        while rclpy.ok():
+            try:
+                self.publish_tf2()
+            except Exception as e:
+                self.get_logger().error(f"TF2 publish error: {e}")
+            # time.sleep(0.05)  # 20 Hz
 
 
     # -------------------------------------------------------------------------
