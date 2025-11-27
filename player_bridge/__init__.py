@@ -94,7 +94,6 @@ dep_order = [
     'libplayerc.so.3.1', 'libplayerc.so',
     'libplayercore.so.3.1', 'libplayercore.so',
     'libplayerreplace.so.3.1', 'libplayerreplace.so',
-    
     'libboost_system.so.1.65.1', 'libboost_thread.so.1.65.1',
     'libplayerc++.so.3.1', 'libplayerc++.so',
     'libpython3.6m.so.1.0', 'libpython3.6m.so'

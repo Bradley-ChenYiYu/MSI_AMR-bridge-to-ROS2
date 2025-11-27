@@ -8,6 +8,8 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32
 from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import Image
+from sensor_msgs.msg import CameraInfo
 import math
 import numpy as np
 import time
@@ -19,6 +21,7 @@ import threading
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
+import ctypes
 
 
 
@@ -60,13 +63,23 @@ class PlayerBridgeNode(Node):
         self.get_logger().info(f'Connecting to Player server at {host}')
 
         self.robot = PlayerClient(host, 6665)
+        
+        self.robot1 = PlayerClient(host, 6667)
+        self.robot1.SetRequestTimeout(30) #Set the timeout for client requests
+        
         self.p2d = Position2dProxy(self.robot, 0)
         self.slam = Position2dProxy(self.robot, 2)
-        self.dis = DispatcherProxy(self.robot,0);
-        self.lp0 = LaserProxy(self.robot, 0);
-        self.lp1 = LaserProxy(self.robot, 1);
+        self.dis = DispatcherProxy(self.robot,0)
+        self.lp0 = LaserProxy(self.robot, 0)
+        self.lp1 = LaserProxy(self.robot, 1)
+        
 
-        self.tf_static_broadcaster = StaticTransformBroadcaster(self)
+        self.cam0 = CameraProxy(self.robot1, 4)
+        self.cam1 = CameraProxy(self.robot1, 14)
+
+        
+        
+        self.tf_static_broadcaster = StaticTransformBroadcaster(self)        self.tf_static_broadcaster = StaticTransformBroadcaster(self)
         # Retrieve the pose of the laser with respect to its parent
         self.lp0.RequestConfigure();
         self.lp0.RequestGeom();
@@ -91,14 +104,33 @@ class PlayerBridgeNode(Node):
         self._publish_static_tf2(pose.px, pose.py, pose.pz, pose.proll, pose.ppitch, pose.pyaw, child_frame_id='laser1', frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
 
 
+        self.cam0.RequestGeom()  
+        self.cam0.RequestIntrinsics()
+        camGeom=self.cam0.GetPoseVect()
+        camIntrinsics=self.cam0.GetIntrinsicsVect()
+        print("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (0,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
+        print("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (0,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
+        
+        
+        self.cam1.RequestGeom()  
+        self.cam1.RequestIntrinsics()
+        camGeom=self.cam1.GetPoseVect()
+        camIntrinsics=self.cam1.GetIntrinsicsVect()
+        print("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (1,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
+        print("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (1,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))        self._publish_static_tf2(pose.px, pose.py, pose.pz, pose.proll, pose.ppitch, pose.pyaw, child_frame_id='laser1', frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
 
 
 
+
+        
         # --- ROS Publisher / Subscriber ---
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
         self.pose_pub = self.create_publisher(Odometry, 'pose', 10)
         self.laser0_pub = self.create_publisher(LaserScan, 'laser0', 10)
         self.laser1_pub = self.create_publisher(LaserScan, 'laser1', 10)
+        self.cam0_pub = self.create_publisher(Image, 'camera0', 10)
+        self.cam1_pub = self.create_publisher(Image, 'camera1', 10)
+        
         self.cmd_sub = self.create_subscription(Twist, 'cmd_vel', self.cmd_callback, 10)
         self.tf_broadcaster = TransformBroadcaster(self)
 
@@ -111,6 +143,7 @@ class PlayerBridgeNode(Node):
         # --- 速度命令 ---
         self.cmd_v = 0.0
         self.cmd_w = 0.0
+        
 
         #not allow MSI AI 控制底盤
         self.dis.SetAiCmd(ctypes.c_uint(PLAYER_DISPATCH_INIT_DEST_RD).value,ctypes.c_uint(PLAYER_DISPATCH_AI_NOT_CONTROL_CHASSIS).value) 
@@ -119,6 +152,12 @@ class PlayerBridgeNode(Node):
         self.loop_thread = threading.Thread(target=self.loop_thread_func)
         self.loop_thread.daemon = True
         self.loop_thread.start()
+
+        # --- Thread for Player camera loop ---
+        self.loop1_thread = threading.Thread(target=self.loop1_thread_func)
+        self.loop1_thread.daemon = True
+        self.loop1_thread.start()
+        
         # --- Thread for publishing tf2 ---
         self.tf2_thread = threading.Thread(target=self.publish_tf2_func)
         self.tf2_thread.daemon = True
@@ -126,6 +165,7 @@ class PlayerBridgeNode(Node):
 
         self.get_logger().info("Player ROS2 bridge started.")
 
+    
     # -------------------------------------------------------------------------
     def cmd_callback(self, msg: Twist):
         #self.get_logger().info("linear.x=%f angular.z=%f" % (msg.linear.x,msg.angular.z))
@@ -298,6 +338,31 @@ class PlayerBridgeNode(Node):
             odom_msg.twist.twist.angular.z = p2d.GetYawSpeed()
             
             pub.publish(odom_msg)
+            
+    # -------------------------------------------------------------------------
+    def publish_cam(self, cam: CameraProxy, pub: rclpy.publisher.Publisher):
+        if cam.IsFresh()==True:
+            cam.NotFresh()
+            
+            img_msg = Image()
+            
+            img_msg.header.stamp = self.get_clock().now().to_msg()
+            img_msg.header.frame_id = "camera"
+            
+            img_msg.height = int(cam.GetHeight())
+            img_msg.width = int(cam.GetWidth())
+            img_msg.encoding = "rgb8"
+            img_msg.is_bigendian = 0
+            img_msg.step = img_msg.width * 3   # 假設 3 channel
+            
+            cam.Decompress()
+            imgAdd=cam.GetImage()
+            imgRaw = (ctypes.c_uint8 * img_msg.height * img_msg.width  * 3).from_address(int(imgAdd))
+            img_msg.data = bytes(imgRaw)     # numpy frame -> byte array
+            
+            
+            
+            pub.publish(img_msg)
     # -------------------------------------------------------------------
     def loop_thread_func(self):
         while rclpy.ok():
@@ -305,6 +370,13 @@ class PlayerBridgeNode(Node):
                 self.loop()
             except Exception as e:
                 self.get_logger().error(f"Player loop error: {e}")
+
+    def loop1_thread_func(self):
+        while rclpy.ok():
+            try:
+                self.loop1()
+            except Exception as e:
+                self.get_logger().error(f"Player loop1 error: {e}")
 
     def publish_tf2_func(self):
         while rclpy.ok():
@@ -317,24 +389,27 @@ class PlayerBridgeNode(Node):
 
     # -------------------------------------------------------------------------
     def loop(self):
-        if not self.robot.Peek(100):
-            return
-        self.robot.Read()
+        if self.robot.Peek(100):
+            self.robot.Read()
             
-
-         # Publish Odometry
-        self.publish_odom(self.p2d, self.odom_pub)
-
-         # Publish Slam
-        self.publish_slam(self.slam, self.pose_pub)
+             # Publish Odometry
+            self.publish_odom(self.p2d, self.odom_pub)
+    
+             # Publish Slam
+            self.publish_slam(self.slam, self.pose_pub)
+            
+            # Publish lasers
+            self.publish_laser(self.lp0, self.laser0_pub)
+            self.publish_laser(self.lp1, self.laser1_pub)
         
-        # Publish lasers
-        self.publish_laser(self.lp0, self.laser0_pub)
-        self.publish_laser(self.lp1, self.laser1_pub)
-        
-
-
-
+    # -------------------------------------------------------------------------
+    def loop1(self):
+        if self.robot1.Peek(100):
+            self.robot1.Read()
+            
+            # Publish camera
+            self.publish_cam(self.cam0,self.cam0_pub)
+            self.publish_cam(self.cam1,self.cam1_pub)
     # -------------------------------------------------------------------------
     def destroy_node(self):
         self.get_logger().info("Stopping robot...")
@@ -347,11 +422,14 @@ class PlayerBridgeNode(Node):
 
 
         
+        del self.cam1
+        del self.cam0
         del self.lp1
         del self.lp0
         del self.dis
         del self.slam
         del self.p2d
+        del self.robot1
         del self.robot
 
         super().destroy_node()
