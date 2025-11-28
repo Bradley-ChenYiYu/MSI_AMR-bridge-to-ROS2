@@ -79,7 +79,7 @@ class PlayerBridgeNode(Node):
 
         
         
-        self.tf_static_broadcaster = StaticTransformBroadcaster(self)        self.tf_static_broadcaster = StaticTransformBroadcaster(self)
+        self.tf_static_broadcaster = StaticTransformBroadcaster(self)
         # Retrieve the pose of the laser with respect to its parent
         self.lp0.RequestConfigure();
         self.lp0.RequestGeom();
@@ -117,9 +117,7 @@ class PlayerBridgeNode(Node):
         camGeom=self.cam1.GetPoseVect()
         camIntrinsics=self.cam1.GetIntrinsicsVect()
         print("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (1,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
-        print("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (1,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))        self._publish_static_tf2(pose.px, pose.py, pose.pz, pose.proll, pose.ppitch, pose.pyaw, child_frame_id='laser1', frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
-
-
+        print("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (1,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
 
 
         

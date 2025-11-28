@@ -30,8 +30,10 @@ colcon build --merge-install --packages-select player_bridge --event-handlers co
 make sure you note book connect to AMR SSID:MSIxxxxxxxxxxxx first and you will get ip 192.168.0.x
 the AMR IP will be 192.168.0.2 you can access it via this IP address.
 
+```
 $ source install/share/player_bridge/environment/99_player_lib.sh
 $ ros2 run player_bridge player_bridge --ros-args -p player_host:=192.168.0.2
+```
 
 
 
