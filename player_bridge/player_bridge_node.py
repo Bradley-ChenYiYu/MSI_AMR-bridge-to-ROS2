@@ -77,8 +77,7 @@ class PlayerBridgeNode(Node):
         self.cam0 = CameraProxy(self.robot1, 4)
         self.cam1 = CameraProxy(self.robot1, 14)
 
-        
-        
+        self.static_transforms = []
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
         # Retrieve the pose of the laser with respect to its parent
         self.lp0.RequestConfigure();
@@ -302,7 +301,12 @@ class PlayerBridgeNode(Node):
         t.transform.rotation.z = quat[2]
         t.transform.rotation.w = quat[3]
 
-        self.tf_static_broadcaster.sendTransform(t)
+        # Remove existing transform for this child frame if it exists to avoid duplicates
+        self.static_transforms = [tr for tr in self.static_transforms if tr.child_frame_id != child_frame_id]
+        self.static_transforms.append(t)
+
+        # Publish the accumulated list of transforms
+        self.tf_static_broadcaster.sendTransform(self.static_transforms)
         self.get_logger().info(f'Published static transform from {t.header.frame_id} to {t.child_frame_id}')
     
     # -------------------------------------------------------------------------
