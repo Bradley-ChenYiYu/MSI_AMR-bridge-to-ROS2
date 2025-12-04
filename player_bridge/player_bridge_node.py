@@ -107,18 +107,20 @@ class PlayerBridgeNode(Node):
         self.cam0.RequestIntrinsics()
         camGeom=self.cam0.GetPoseVect()
         camIntrinsics=self.cam0.GetIntrinsicsVect()
-        print("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (0,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
-        print("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (0,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
+        camIndex = self.cam0.GetIndex()
+        self.get_logger().info("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (camIndex,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
+        self.get_logger().info("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (camIndex,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
+        self._publish_static_tf2(camGeom[0], camGeom[1], camGeom[2], camGeom[3], camGeom[4], camGeom[5], child_frame_id=f"camera{camIndex}", frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
         
         
         self.cam1.RequestGeom()  
         self.cam1.RequestIntrinsics()
         camGeom=self.cam1.GetPoseVect()
         camIntrinsics=self.cam1.GetIntrinsicsVect()
-        print("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (1,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
-        print("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (1,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
-
-
+        camIndex = self.cam1.GetIndex()
+        self.get_logger().info("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (camIndex,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
+        self.get_logger().info("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (camIndex,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
+        self._publish_static_tf2(camGeom[0], camGeom[1], camGeom[2], camGeom[3], camGeom[4], camGeom[5], child_frame_id=f"camera{camIndex}", frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
         
         # --- ROS Publisher / Subscriber ---
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
@@ -349,7 +351,8 @@ class PlayerBridgeNode(Node):
             img_msg = Image()
             
             img_msg.header.stamp = self.get_clock().now().to_msg()
-            img_msg.header.frame_id = "camera"
+            # img_msg.header.frame_id = "camera"
+            img_msg.header.frame_id = f"camera{cam.GetIndex()}"
             
             img_msg.height = int(cam.GetHeight())
             img_msg.width = int(cam.GetWidth())
