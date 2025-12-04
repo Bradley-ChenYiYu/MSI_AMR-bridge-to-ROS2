@@ -120,6 +120,7 @@ class PlayerBridgeNode(Node):
             self.cam0.RequestIntrinsics()
             camGeom=self.cam0.GetPoseVect()
             camIntrinsics=self.cam0.GetIntrinsicsVect()
+            self.cam0_intrinsics = camIntrinsics
             camIndex = self.cam0.GetIndex()
             self.get_logger().info("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (camIndex,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
             self.get_logger().info("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (camIndex,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
@@ -131,6 +132,7 @@ class PlayerBridgeNode(Node):
             self.cam1.RequestIntrinsics()
             camGeom=self.cam1.GetPoseVect()
             camIntrinsics=self.cam1.GetIntrinsicsVect()
+            self.cam1_intrinsics = camIntrinsics
             camIndex = self.cam1.GetIndex()
             self.get_logger().info("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (camIndex,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
             self.get_logger().info("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (camIndex,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
@@ -146,8 +148,10 @@ class PlayerBridgeNode(Node):
             self.laser1_pub = self.create_publisher(LaserScan, 'laser1', 10)
         if self.enable_cam0:
             self.cam0_pub = self.create_publisher(Image, 'camera0', 10)
+            self.cam0_info_pub = self.create_publisher(CameraInfo, 'camera0/camera_info', 10)
         if self.enable_cam1:
             self.cam1_pub = self.create_publisher(Image, 'camera1', 10)
+            self.cam1_info_pub = self.create_publisher(CameraInfo, 'camera1/camera_info', 10)
         
         self.cmd_sub = self.create_subscription(Twist, 'cmd_vel', self.cmd_callback, 10)
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -363,7 +367,7 @@ class PlayerBridgeNode(Node):
             pub.publish(odom_msg)
             
     # -------------------------------------------------------------------------
-    def publish_cam(self, cam: CameraProxy, pub: rclpy.publisher.Publisher):
+    def publish_cam(self, cam: CameraProxy, pub: rclpy.publisher.Publisher, info_pub: rclpy.publisher.Publisher, intrinsics):
         if cam.IsFresh()==True:
             cam.NotFresh()
             
@@ -387,6 +391,33 @@ class PlayerBridgeNode(Node):
             
             
             pub.publish(img_msg)
+
+            # Publish CameraInfo
+            info_msg = CameraInfo()
+            info_msg.header = img_msg.header
+            info_msg.height = img_msg.height
+            info_msg.width = img_msg.width
+            info_msg.distortion_model = "plumb_bob"
+            
+            # intrinsics: [ppx, ppy, fx, fy]
+            ppx = intrinsics[0]
+            ppy = intrinsics[1]
+            fx = intrinsics[2]
+            fy = intrinsics[3]
+            
+            # K: [fx, 0, cx, 0, fy, cy, 0, 0, 1]
+            info_msg.k = [fx, 0.0, ppx, 0.0, fy, ppy, 0.0, 0.0, 1.0]
+            
+            # D: [0, 0, 0, 0, 0] (assuming no distortion)
+            info_msg.d = [0.0, 0.0, 0.0, 0.0, 0.0]
+            
+            # R: Identity
+            info_msg.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+            
+            # P: [fx, 0, cx, 0, 0, fy, cy, 0, 0, 0, 1, 0]
+            info_msg.p = [fx, 0.0, ppx, 0.0, 0.0, fy, ppy, 0.0, 0.0, 0.0, 1.0, 0.0]
+            
+            info_pub.publish(info_msg)
     # -------------------------------------------------------------------
     def loop_thread_func(self):
         while rclpy.ok():
@@ -435,9 +466,9 @@ class PlayerBridgeNode(Node):
             
             # Publish camera
             if self.enable_cam0:
-                self.publish_cam(self.cam0,self.cam0_pub)
+                self.publish_cam(self.cam0,self.cam0_pub, self.cam0_info_pub, self.cam0_intrinsics)
             if self.enable_cam1:
-                self.publish_cam(self.cam1,self.cam1_pub)
+                self.publish_cam(self.cam1,self.cam1_pub, self.cam1_info_pub, self.cam1_intrinsics)
     # -------------------------------------------------------------------------
     def destroy_node(self):
         self.get_logger().info("Stopping robot...")
