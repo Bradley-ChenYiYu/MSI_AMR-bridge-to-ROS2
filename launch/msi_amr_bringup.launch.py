@@ -1,13 +1,23 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('player_bridge')
     rviz_config_file = os.path.join(pkg_share, 'config', 'msi.rviz')
 
+    use_rviz = LaunchConfiguration('use_rviz')
+
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'use_rviz',
+            default_value='false',
+            description='Whether to start Rviz2'
+        ),
         Node(
             package='player_bridge',
             executable='laser_merger_node',
@@ -40,6 +50,7 @@ def generate_launch_description():
             executable='rviz2',
             name='rviz2',
             arguments=['-d', rviz_config_file],
+            condition=IfCondition(use_rviz),
             output='screen'
         )
     ])
