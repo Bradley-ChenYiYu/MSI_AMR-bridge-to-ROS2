@@ -45,7 +45,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'player_bridge = player_bridge.player_bridge_node:main'
+            'player_bridge = player_bridge.player_bridge_node:main',
+            'laser_merger_node = player_bridge.laser_merger_node:main',
         ],
     },
 )
