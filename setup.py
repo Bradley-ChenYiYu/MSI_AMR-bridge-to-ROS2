@@ -22,7 +22,7 @@ setup(
         ('share/' + package_name + '/environment', ['environment/99_player_lib.sh']),
         (os.path.join('share', package_name, 'client_lib'), glob('client_lib/*')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
-        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'config'), glob('config/*')),
     ],
     
     
