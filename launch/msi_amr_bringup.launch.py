@@ -11,12 +11,18 @@ def generate_launch_description():
     rviz_config_file = os.path.join(pkg_share, 'config', 'msi.rviz')
 
     use_rviz = LaunchConfiguration('use_rviz')
+    enable_cam0 = LaunchConfiguration('enable_cam0')
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_rviz',
             default_value='false',
             description='Whether to start Rviz2'
+        ),
+        DeclareLaunchArgument(
+            'enable_cam0',
+            default_value='true',
+            description='Whether to enable camera 0'
         ),
         Node(
             package='player_bridge',
@@ -41,7 +47,7 @@ def generate_launch_description():
                 'map_frame': 'map',
                 'enable_lp0': True,
                 'enable_lp1': True,
-                'enable_cam0': True,
+                'enable_cam0': enable_cam0,
                 'enable_cam1': False,
             }]
         ),
