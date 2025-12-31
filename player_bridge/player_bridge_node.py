@@ -228,14 +228,17 @@ class PlayerBridgeNode(Node):
                     f = float(val)
                 except Exception:
                     f = float('nan')
-                if math.isnan(f) or math.isinf(f):
-                    # replace invalid range with max range (interpreted as no return)
-                    f = float(scan.range_max)
-                # clamp to [range_min, range_max]
+                # if math.isnan(f) or math.isinf(f):
+                #     self.get_logger().warning(f"Laser value changed: {f} -> {float(scan.range_max)}")
+                #     # replace invalid range with max range (interpreted as no return)
+                #     f = float(scan.range_max)
+                # # clamp to [range_min, range_max]
                 if f < scan.range_min:
+                    # self.get_logger().warning(f"Laser value changed: {f} -> {float(scan.range_min)}")
                     f = float(scan.range_min)
                 if f > scan.range_max:
-                    f = float(scan.range_max)
+                    # self.get_logger().warning(f"Laser value changed: {f} -> {float('inf')}")
+                    f = float('inf')
                 ranges.append(f)
 
             # Sanitize intensities: ensure floats; if missing or invalid use 0.0
