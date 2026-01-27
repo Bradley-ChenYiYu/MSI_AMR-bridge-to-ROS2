@@ -12,6 +12,8 @@ def generate_launch_description():
 
     use_rviz = LaunchConfiguration('use_rviz')
     enable_cam0 = LaunchConfiguration('enable_cam0')
+    enable_cam1 = LaunchConfiguration('enable_cam1')
+    enable_cam2 = LaunchConfiguration('enable_cam2')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -23,6 +25,16 @@ def generate_launch_description():
             'enable_cam0',
             default_value='true',
             description='Whether to enable camera 0'
+        ),
+        DeclareLaunchArgument(
+            'enable_cam1',
+            default_value='true',
+            description='Whether to enable camera 1'
+        ),
+        DeclareLaunchArgument(
+            'enable_cam2',
+            default_value='true',
+            description='Whether to enable camera 2'
         ),
         Node(
             package='player_bridge',
@@ -48,7 +60,8 @@ def generate_launch_description():
                 'enable_lp0': True,
                 'enable_lp1': True,
                 'enable_cam0': enable_cam0,
-                'enable_cam1': False,
+                'enable_cam1': enable_cam1,
+                'enable_cam2': enable_cam2,
             }]
         ),
         Node(

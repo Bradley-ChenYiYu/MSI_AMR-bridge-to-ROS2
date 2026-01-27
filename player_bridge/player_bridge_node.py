@@ -61,11 +61,13 @@ class PlayerBridgeNode(Node):
         self.declare_parameter('enable_lp1', True)
         self.declare_parameter('enable_cam0', True)
         self.declare_parameter('enable_cam1', True)
+        self.declare_parameter('enable_cam2', True)
 
         self.enable_lp0 = self.get_parameter('enable_lp0').get_parameter_value().bool_value
         self.enable_lp1 = self.get_parameter('enable_lp1').get_parameter_value().bool_value
         self.enable_cam0 = self.get_parameter('enable_cam0').get_parameter_value().bool_value
         self.enable_cam1 = self.get_parameter('enable_cam1').get_parameter_value().bool_value
+        self.enable_cam2 = self.get_parameter('enable_cam2').get_parameter_value().bool_value
 
         # --- Player 連線 ---
         host = self.get_parameter('player_host').get_parameter_value().string_value
@@ -86,6 +88,7 @@ class PlayerBridgeNode(Node):
 
         self.cam0 = CameraProxy(self.robot1, 4) if self.enable_cam0 else None
         self.cam1 = CameraProxy(self.robot1, 14) if self.enable_cam1 else None
+        self.cam2 = CameraProxy(self.robot1, 24) if self.enable_cam2 else None
 
         self.static_transforms = []
         self.tf_static_broadcaster = StaticTransformBroadcaster(self)
@@ -138,6 +141,17 @@ class PlayerBridgeNode(Node):
             self.get_logger().info("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (camIndex,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
             self._publish_static_tf2(camGeom[0], camGeom[1], camGeom[2], camGeom[3], camGeom[4], camGeom[5], child_frame_id=f"camera{camIndex}", frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
         
+        if self.enable_cam2:
+            self.cam2.RequestGeom()  
+            self.cam2.RequestIntrinsics()
+            camGeom=self.cam2.GetPoseVect()
+            camIntrinsics=self.cam2.GetIntrinsicsVect()
+            self.cam2_intrinsics = camIntrinsics
+            camIndex = self.cam2.GetIndex()
+            self.get_logger().info("Camera[%d] camGeom px=%f py=%f pz=%f proll=%f ppitch=%f pyaw=%f" % (camIndex,camGeom[0],camGeom[1],camGeom[2],camGeom[3],camGeom[4],camGeom[5]) )
+            self.get_logger().info("Camera[%d] camIntrinsics ppx=%f ppy=%f fx=%f fy=%f " % (camIndex,camIntrinsics[0],camIntrinsics[1],camIntrinsics[2],camIntrinsics[3]))
+            self._publish_static_tf2(camGeom[0], camGeom[1], camGeom[2], camGeom[3], camGeom[4], camGeom[5], child_frame_id=f"camera{camIndex}", frame_id=self.get_parameter('base_frame').get_parameter_value().string_value)
+        
         # --- ROS Publisher / Subscriber ---
         self.odom_pub = self.create_publisher(Odometry, 'odom', 10)
         self.pose_pub = self.create_publisher(Odometry, 'pose', 10)
@@ -152,6 +166,9 @@ class PlayerBridgeNode(Node):
         if self.enable_cam1:
             self.cam1_pub = self.create_publisher(Image, 'camera1', 10)
             self.cam1_info_pub = self.create_publisher(CameraInfo, 'camera1/camera_info', 10)
+        if self.enable_cam2:
+            self.cam2_pub = self.create_publisher(Image, 'camera2', 10)
+            self.cam2_info_pub = self.create_publisher(CameraInfo, 'camera2/camera_info', 10)
         
         self.cmd_sub = self.create_subscription(Twist, 'cmd_vel', self.cmd_callback, 10)
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -472,6 +489,8 @@ class PlayerBridgeNode(Node):
                 self.publish_cam(self.cam0,self.cam0_pub, self.cam0_info_pub, self.cam0_intrinsics)
             if self.enable_cam1:
                 self.publish_cam(self.cam1,self.cam1_pub, self.cam1_info_pub, self.cam1_intrinsics)
+            if self.enable_cam2:
+                self.publish_cam(self.cam2,self.cam2_pub, self.cam2_info_pub, self.cam2_intrinsics)
     # -------------------------------------------------------------------------
     def destroy_node(self):
         self.get_logger().info("Stopping robot...")
@@ -484,6 +503,8 @@ class PlayerBridgeNode(Node):
 
 
         
+        if self.enable_cam2:
+            del self.cam2
         if self.enable_cam1:
             del self.cam1
         if self.enable_cam0:
