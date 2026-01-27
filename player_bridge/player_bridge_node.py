@@ -59,9 +59,9 @@ class PlayerBridgeNode(Node):
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('enable_lp0', True)
         self.declare_parameter('enable_lp1', True)
-        self.declare_parameter('enable_cam0', True)
-        self.declare_parameter('enable_cam1', True)
-        self.declare_parameter('enable_cam2', True)
+        self.declare_parameter('enable_cam0', False)
+        self.declare_parameter('enable_cam1', False)
+        self.declare_parameter('enable_cam2', False)
 
         self.enable_lp0 = self.get_parameter('enable_lp0').get_parameter_value().bool_value
         self.enable_lp1 = self.get_parameter('enable_lp1').get_parameter_value().bool_value
@@ -193,9 +193,9 @@ class PlayerBridgeNode(Node):
         self.loop_thread.start()
 
         # --- Thread for Player camera loop ---
-        self.loop1_thread = threading.Thread(target=self.loop1_thread_func)
-        self.loop1_thread.daemon = True
-        self.loop1_thread.start()
+        # self.loop1_thread = threading.Thread(target=self.loop1_thread_func)
+        # self.loop1_thread.daemon = True
+        # self.loop1_thread.start()
         
         # --- Thread for publishing tf2 ---
         self.tf2_thread = threading.Thread(target=self.publish_tf2_func)
@@ -530,7 +530,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     node.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
