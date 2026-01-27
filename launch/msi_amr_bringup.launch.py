@@ -16,7 +16,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_rviz',
-            default_value='false',
+            default_value='true',
             description='Whether to start Rviz2'
         ),
         DeclareLaunchArgument(
@@ -41,7 +41,7 @@ def generate_launch_description():
             name='player_bridge_node',
             output='screen',
             parameters=[{
-                'player_host': '192.168.0.2',
+                'player_host': '192.168.88.8',
                 'odom_frame': 'odom',
                 'base_frame': 'base_link',
                 'map_frame': 'map',
