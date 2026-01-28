@@ -21,6 +21,7 @@ import threading
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 import ctypes
 
 # Import Player binding
@@ -100,22 +101,34 @@ class PlayerRgbBridgeNode(Node):
             self.cam2_pub = self.create_publisher(Image, 'camera2', 10)
             self.cam2_info_pub = self.create_publisher(CameraInfo, 'camera2/camera_info', 10)
 
-        self.timer = self.create_timer(0.01, self.timer_callback)
+        self.my_callback_group = ReentrantCallbackGroup()
+        if self.enable_cam0:
+            self.timer_cam0 = self.create_timer(0.01, self.timer_callback_cam0,
+                                       callback_group=self.my_callback_group)
+        if self.enable_cam1:
+            self.timer_cam1 = self.create_timer(0.01, self.timer_callback_cam1,
+                                       callback_group=self.my_callback_group)
+        if self.enable_cam2:
+            self.timer_cam2 = self.create_timer(0.01, self.timer_callback_cam2,
+                                       callback_group=self.my_callback_group)
 
         self.get_logger().info("Player RGB ROS2 bridge started.")
 
-    def timer_callback(self):
-        if self.robot1.Peek(100):
+    def timer_callback_cam0(self):
+        if self.robot1.Peek(100) and self.enable_cam0:
             self.robot1.Read()
+            self.publish_cam(self.cam0,self.cam0_pub, self.cam0_info_pub, self.cam0_intrinsics)
             
-            # Publish camera
-            if self.enable_cam0:
-                self.publish_cam(self.cam0,self.cam0_pub, self.cam0_info_pub, self.cam0_intrinsics)
-            if self.enable_cam1:
-                self.publish_cam(self.cam1,self.cam1_pub, self.cam1_info_pub, self.cam1_intrinsics)
-            if self.enable_cam2:
-                self.publish_cam(self.cam2,self.cam2_pub, self.cam2_info_pub, self.cam2_intrinsics)
-    
+    def timer_callback_cam1(self):
+        if self.robot1.Peek(100) and self.enable_cam1:
+            self.robot1.Read()
+            self.publish_cam(self.cam1,self.cam1_pub, self.cam1_info_pub, self.cam1_intrinsics)
+            
+    def timer_callback_cam2(self):
+        if self.robot1.Peek(100) and self.enable_cam2:
+            self.robot1.Read()
+            self.publish_cam(self.cam2,self.cam2_pub, self.cam2_info_pub, self.cam2_intrinsics)
+            
     def publish_cam(self, cam: CameraProxy, pub: rclpy.publisher.Publisher, info_pub: rclpy.publisher.Publisher, intrinsics):
         if cam.IsFresh()==True:
             cam.NotFresh()
@@ -208,14 +221,20 @@ class PlayerRgbBridgeNode(Node):
         return x, y, z, w
 
 def main(args=None):
+    # TODO: Use MultiThreadedExecutor to handle multiple cameras
     rclpy.init(args=args)
+    # executor = rclpy.executors.MultiThreadedExecutor()
     node = PlayerRgbBridgeNode()
+    # executor.add_node(node)
     try:
         rclpy.spin(node)
+        # executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
         node.destroy_node()
+        # executor.shutdown()
+        # executor.destroy_node() 
         if rclpy.ok(): rclpy.shutdown()
 
 if __name__ == '__main__':
