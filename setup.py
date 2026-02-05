@@ -5,14 +5,19 @@ https://www.theconstruct.ai/ros2-qa-215-how-to-use-ros2-python-launch-files/
 from setuptools import find_packages, setup
 import os
 from glob import glob
-
-
+# Cython
+from Cython.Build import cythonize
 
 
 
 package_name = 'player_bridge'
+# Cython
+files = package_name + "/*.py"
+# files = [package_name + "/*.py", "launch/*.py"]
 
 setup(
+    # Cython
+    ext_modules=cythonize(files,compiler_directives={'language_level' : "3"},force=True,quiet=True),
     name=package_name,
     version='0.0.0',
     packages=[package_name],
@@ -27,7 +32,8 @@ setup(
     
     
     
-    install_requires=['setuptools'],
+    # Cython
+    install_requires=['setuptools', "wheel",  "Cython"],
     zip_safe=True,
     author='leonli',
     author_email='leonli@msi.com',
