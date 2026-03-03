@@ -53,6 +53,7 @@ setup(
         'console_scripts': [
             'player_bridge = player_bridge.player_bridge_node:main',
             'player_rgb_bridge = player_bridge.player_rgb_bridge_node:main',
+            'player_battery_bridge = player_bridge.player_battery_bridge_node:main',
             'laser_merger_node = player_bridge.laser_merger_node:main',
         ],
     },
