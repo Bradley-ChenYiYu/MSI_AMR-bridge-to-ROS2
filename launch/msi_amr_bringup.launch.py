@@ -105,6 +105,17 @@ def generate_launch_description():
             }]
         ),
         Node(
+            package='player_bridge',
+            executable='player_battery_bridge',
+            name='player_battery_bridge_node',
+            output='screen',
+            parameters=[{
+                'player_host': player_host,
+                'base_frame': base_frame,
+                'publish_rate': 1.0,    # Hz
+            }]
+        ),
+        Node(
             package='rviz2',
             executable='rviz2',
             name='rviz2',
